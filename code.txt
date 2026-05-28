@@ -1,0 +1,112 @@
+#define BLYNK_TEMPLATE_ID "TMPL6CLcaTDmX"
+#define BLYNK_TEMPLATE_NAME "New Template"
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <MAX30100_PulseOximeter.h>
+#include <WiFi.h>
+#include <BlynkSimpleEsp32.h>  // For ESP32; for ESP8266 use <BlynkSimpleEsp8266.h>
+
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+
+// OLED display setup
+#define OLED_RESET    -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// MAX30100 pulse oximeter setup
+PulseOximeter pox;
+
+// Blynk setup
+char auth[] = "p4e6Y_y4W9CjhhhS5bJucXMg4i5SHUW3"; // Blynk Auth Token
+char ssid[] = "test1234";       // Wi-Fi SSID
+char pass[] = "12345679";   // Wi-Fi password
+
+unsigned long lastPrint = 0;
+
+// Callback routine to be called when new pulse or SpO2 data is available
+void onBeatDetected() {
+  Serial.println("Beat!");
+}
+
+void setup() {
+  // Initialize Serial for debugging
+  Serial.begin(115200);
+
+  // Initialize the OLED display
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;);
+  }
+
+  // Clear the display buffer
+  display.clearDisplay();
+
+  // Initialize Wi-Fi and Blynk connection
+  Blynk.begin(auth, ssid, pass);
+
+  // Initialize the MAX30100 sensor
+  Serial.print("Initializing pulse oximeter..");
+  if (!pox.begin()) {
+    Serial.println("FAILED");
+    for(;;);
+  } else {
+    Serial.println("SUCCESS");
+  }
+
+  // Set the callback function
+  pox.setOnBeatDetectedCallback(onBeatDetected);
+
+  // Set sampling rate for the sensor
+  pox.setIRLedCurrent(MAX30100_LED_CURR_7_6MA); // Adjust as needed
+
+  // Initial display message
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0,0);
+  display.println("Heart Rate Monitor");
+  display.display();
+}
+
+void loop() {
+  // Update the pulse oximeter data
+  pox.update();
+
+  // Update Blynk
+  Blynk.run();
+
+  // Every 1 second, update the display with the new data
+  if (millis() - lastPrint > 1000) {
+    lastPrint = millis();
+
+    // Clear the display
+    display.clearDisplay();
+
+    // Get heart rate and SpO2 values
+    float heartRate = pox.getHeartRate();
+    float spo2 = pox.getSpO2();
+
+    // Display heart rate and SpO2 on OLED
+    display.setCursor(0, 0);
+    display.println("Heart Rate: ");
+    display.setTextSize(2);
+    display.setCursor(0, 20);
+    display.print(heartRate);
+    display.println(" BPM");
+
+    display.setTextSize(1);
+    display.setCursor(0, 40);
+    display.println("SpO2: ");
+    display.setTextSize(2);
+    display.setCursor(0, 50);
+    display.print(spo2);
+    display.println(" %");
+
+    display.display();
+
+    // Send heart rate and SpO2 data to Blynk (Virtual Pin V0 for heart rate, V1 for SpO2)
+    Blynk.virtualWrite(V0, heartRate);
+    Blynk.virtualWrite(V1, spo2);
+  }
+}
